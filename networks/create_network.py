@@ -16,14 +16,14 @@ class NetworkGenerator():
         self.e_distance = END_DISTANCE
         self.n_intersection = N_INTERSECTION
     
-    def create_network(self, thread=None):
+    def create_network(self, init_density, seed=None, thread=None):
         self.gen_nod_file()
         self.gen_typ_file()
         self.gen_edg_file()
         self.gen_con_file()
         self.gen_tll_file()
         self.gen_net_file()
-        self.gen_rou_file()
+        self.gen_rou_file(init_density, seed)
         self.gen_add_file()
         self.gen_sumocfg(thread)
 
@@ -159,7 +159,12 @@ class NetworkGenerator():
         self._write_file(path, config_context)
         os.system('netconvert -c '+ self.name_network + '.netccfg')
     
-    def gen_rou_file(self):
+    def gen_rou_file(self, init_density, seed=None):
+        # if seed is not None:
+        #     random.seed(seed)
+        # ext_flow = '  <flow id="f:%s" departPos="random_free" from="%s" to="%s" begin="%d" end="%d" vehsPerHour="%d" type="type1"/>\n'
+        # str_flows = '<routes>\n'
+        # str_flows += '  <vType id="type1" length="5" accel="2.6" decel="4.5"/>\n'
         pass
     
     def _gen_add_str(self, ild_str, from_node, to_node, n_lane):

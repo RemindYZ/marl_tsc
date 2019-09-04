@@ -1,0 +1,12 @@
+<configuration>
+  <input>
+    <edge-files value="Grid9.edg.xml"/>
+    <node-files value="Grid9.nod.xml"/>
+    <type-files value="Grid9.typ.xml"/>
+    <tllogic-files value="Grid9.tll.xml"/>
+    <connection-files value="Grid9.con.xml"/>
+  </input>
+  <output>
+    <output-file value="Grid9.net.xml"/>
+  </output>
+</configuration>

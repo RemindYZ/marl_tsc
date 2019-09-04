@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import random
+from flow import FlowHelper
 
 PATH = './data/'
 INTERSECTION_DISTANCE = 500
@@ -17,14 +18,23 @@ class NetworkGenerator():
         self.n_intersection = N_INTERSECTION
     
     def create_network(self, init_density, seed=None, thread=None):
+        print('generating nod file...')
         self.gen_nod_file()
+        print('generating typ file...')
         self.gen_typ_file()
+        print('generating edg file...')
         self.gen_edg_file()
+        print('generating con file...')
         self.gen_con_file()
+        print('generating tll file...')
         self.gen_tll_file()
+        print('generating net file...')
         self.gen_net_file()
+        print('generating rou file...')
         self.gen_rou_file(init_density, seed)
+        print('generating add file...')
         self.gen_add_file()
+        print('generating sim file...')
         self.gen_sumocfg(thread)
 
     def _write_file(self, path, content):
@@ -65,12 +75,12 @@ class NetworkGenerator():
         self._write_file(path, type_context)
     
     def _gen_edg_str(self, edge_str, from_node, to_node, edge_type):
-        edge_id = 'e:%s_%s' %(from_node, to_node)
+        edge_id = '%s_%s' %(from_node, to_node)
         return edge_str %(edge_id, from_node, to_node, edge_type)
     
     def gen_edg_file(self):
         path = self.path + self.name_network +'.edg.xml'
-        edges_context = '<nodes>\n'
+        edges_context = '<edges>\n'
         edges_str = '  <edge id="%s" from="%s" to="%s" type="%s"/>\n'
         node_pair = [('P0','I0'),('P1','I1'),('P2','I2'),
                     ('P3','I6'),('P4','I7'),('P5','I8'),
@@ -86,8 +96,8 @@ class NetworkGenerator():
         self._write_file(path, edges_context)
     
     def _gen_con_str(self, con_str, from_node, cur_node, to_node, from_lane, to_lane):
-        from_edge = 'e:%s_%s' % (from_node, cur_node)
-        to_edge = 'e:%s_%s' % (cur_node, to_node)
+        from_edge = '%s_%s' % (from_node, cur_node)
+        to_edge = '%s_%s' % (cur_node, to_node)
         return con_str % (from_edge, to_edge, from_lane, to_lane)
     
     def _gen_con_node(self, con_str, cur_node, n_node, s_node, w_node, e_node):
@@ -97,15 +107,23 @@ class NetworkGenerator():
         str_cons += self._gen_con_str(con_str, n_node, cur_node, s_node, 0, 0)
         str_cons += self._gen_con_str(con_str, s_node, cur_node, n_node, 1, 1)
         str_cons += self._gen_con_str(con_str, n_node, cur_node, s_node, 1, 1)
+        # str_cons += self._gen_con_str(con_str, s_node, cur_node, n_node, 1, 2)
+        # str_cons += self._gen_con_str(con_str, n_node, cur_node, s_node, 1, 2)
         str_cons += self._gen_con_str(con_str, w_node, cur_node, e_node, 0, 0)
         str_cons += self._gen_con_str(con_str, e_node, cur_node, w_node, 0, 0)
         str_cons += self._gen_con_str(con_str, w_node, cur_node, e_node, 1, 1)
         str_cons += self._gen_con_str(con_str, e_node, cur_node, w_node, 1, 1)
+        # str_cons += self._gen_con_str(con_str, w_node, cur_node, e_node, 1, 2)
+        # str_cons += self._gen_con_str(con_str, e_node, cur_node, w_node, 1, 2)
         # left-turn
-        str_cons += self._gen_con_str(con_str, s_node, cur_node, w_node, 2, 1)
-        str_cons += self._gen_con_str(con_str, n_node, cur_node, e_node, 2, 1)
-        str_cons += self._gen_con_str(con_str, w_node, cur_node, n_node, 2, 1)
-        str_cons += self._gen_con_str(con_str, e_node, cur_node, s_node, 2, 1)
+        str_cons += self._gen_con_str(con_str, s_node, cur_node, w_node, 2, 2)
+        str_cons += self._gen_con_str(con_str, n_node, cur_node, e_node, 2, 2)
+        str_cons += self._gen_con_str(con_str, w_node, cur_node, n_node, 2, 2)
+        str_cons += self._gen_con_str(con_str, e_node, cur_node, s_node, 2, 2)
+        # str_cons += self._gen_con_str(con_str, s_node, cur_node, w_node, 2, 1)
+        # str_cons += self._gen_con_str(con_str, n_node, cur_node, e_node, 2, 1)
+        # str_cons += self._gen_con_str(con_str, w_node, cur_node, n_node, 2, 1)
+        # str_cons += self._gen_con_str(con_str, e_node, cur_node, s_node, 2, 1)
         # right-turn
         str_cons += self._gen_con_str(con_str, s_node, cur_node, e_node, 0, 0)
         str_cons += self._gen_con_str(con_str, n_node, cur_node, w_node, 0, 0)
@@ -117,7 +135,7 @@ class NetworkGenerator():
         path = self.path + self.name_network +'.con.xml'
         connections_context = '<connections>\n'
         connections_str = '  <connection from="%s" to="%s" fromLane="%d" toLane="%d"/>\n'
-        node_pair = [('I0','I3','P0','P6','I0'),('I1','I4','P1','I0','I2'),('I2','I5','P2','I1','P9'),
+        node_pair = [('I0','I3','P0','P6','I1'),('I1','I4','P1','I0','I2'),('I2','I5','P2','I1','P9'),
                     ('I3','I6','I0','P7','I4'),('I4','I7','I1','I3','I5'),('I5','I8','I2','I4','P10'),
                     ('I6','P3','I3','P8','I7'),('I7','P4','I4','I6','I8'),('I8','P5','I5','I7','P11')]
         for (cur,n,s,w,e) in node_pair:
@@ -131,10 +149,10 @@ class NetworkGenerator():
         tls_str = '  <tlLogic id="%s" programID="0" offset="%d" type="static">\n'
         phase_str = '    <phase duration="%d" state="%s"/>\n'
         tls_context = '<additional>\n'
-        phases = [('GGrrrrGGrrrr',25), ('yyrrrryyrrrr',3),
-                 ('rrGrrrrrGrrr',15), ('rryrrrrryrrr',3),
-                 ('rrrGGrrrrGGr',25), ('rrryyrrrryyr',3),
-                 ('rrrrrGrrrrrG',15), ('rrrrryrrrrry',3)]
+        phases = [('GGGrrrrrGGGrrrrr',25), ('yyyrrrrryyyrrrrr',3),
+                 ('rrrGrrrrrrrGrrrr',15), ('rrryrrrrrrryrrrr',3),
+                 ('rrrrGGGrrrrrGGGr',25), ('rrrryyyrrrrryyyr',3),
+                 ('rrrrrrrGrrrrrrrG',15), ('rrrrrrryrrrrrrry',3)]
         for ind in range(self.n_intersection*self.n_intersection):
             offset = random.randint(0,91)
             node_id = 'I' + str(ind)
@@ -147,25 +165,66 @@ class NetworkGenerator():
     
     def gen_net_file(self):
         config_context = '<configuration>\n  <input>\n'
-        config_context += '    <edge-files value="exp.edg.xml"/>\n'
-        config_context += '    <node-files value="exp.nod.xml"/>\n'
-        config_context += '    <type-files value="exp.typ.xml"/>\n'
-        config_context += '    <tllogic-files value="exp.tll.xml"/>\n'
-        config_context += '    <connection-files value="exp.con.xml"/>\n'
+        config_context += '    <edge-files value="'+self.name_network+'.edg.xml"/>\n'
+        config_context += '    <node-files value="'+self.name_network+'.nod.xml"/>\n'
+        config_context += '    <type-files value="'+self.name_network+'.typ.xml"/>\n'
+        config_context += '    <tllogic-files value="'+self.name_network+'.tll.xml"/>\n'
+        config_context += '    <connection-files value="'+self.name_network+'.con.xml"/>\n'
         config_context += '  </input>\n  <output>\n'
-        config_context += '    <output-file value="exp.net.xml"/>\n'
+        config_context += '    <output-file value="'+self.name_network+'.net.xml"/>\n'
         config_context += '  </output>\n</configuration>\n'
         path = self.path + self.name_network +'.netccfg'
         self._write_file(path, config_context)
-        os.system('netconvert -c '+ self.name_network + '.netccfg')
+        os.system('netconvert -c '+ path)
     
     def gen_rou_file(self, init_density, seed=None):
-        # if seed is not None:
-        #     random.seed(seed)
-        # ext_flow = '  <flow id="f:%s" departPos="random_free" from="%s" to="%s" begin="%d" end="%d" vehsPerHour="%d" type="type1"/>\n'
-        # str_flows = '<routes>\n'
-        # str_flows += '  <vType id="type1" length="5" accel="2.6" decel="4.5"/>\n'
-        pass
+        if seed is not None:
+            random.seed(seed)
+        path = self.path + self.name_network +'.rou.xml'
+    #   ext_flow = '  <flow id="f:%s" departPos="random_free" from="%s" to="%s" begin="%d" end="%d" vehsPerHour="%d" type="type1"/>\n'
+        flows_context = '<routes>\n'
+        flows_context += '  <vType id="type1" length="5" accel="2.6" decel="4.5"/>\n'
+        flows_context += self._init_flow(init_density)
+        flows_context += '</routes>\n'
+        self._write_file(path, flows_context)
+        flows = FlowHelper(path)
+        flows.add_sin_flow('flow_sin_1', 'type1', 'P0_I0', 'I7_P4', 0, 3600, 20, 100, 600, 0)
+        flows.add_sin_flow('flow_sin_2', 'type1', 'P7_I3', 'I2_P2', 0, 3600, 20, 80, 500, 45)
+        flows.add_sin_flow('flow_sin_3', 'type1', 'P9_I2', 'I6_P3', 0, 3600, 20, 100, 700, 90)
+        flows.add_linear_flow('flow_line_1', 'type1', 'P5_I8', 'I1_P1', 0, 3600, 20, 0, 400)
+        flows.add_linear_flow('flow_line_2', 'type1', 'P10_I5', 'I6_P8', 0, 3600, 20, 400, 0)
+        flows.add_linear_flow('flow_line_3', 'type1', 'P6_I0', 'I8_P11', 0, 3600, 20, 200, 500)
+        flows.write_xml(path)
+    
+    def _init_flow(self, init_density):
+        init_flow = '  <flow id="init:%s" departPos="random_free" from="%s" to="%s" begin="0" end="1" departLane="random" departSpeed="random" number="%d" type="type1"/>\n'
+        init_flow_context = ''
+        car_num = int(30 * init_density)
+        destination = ['I0_P0', 'I0_P6', 'I1_P1', 'I2_P2', 'I2_P9', 'I5_P10',
+                      'I8_P11', 'I8_P5', 'I7_P4', 'I6_P3', 'I6_P8', 'I3_P7']
+        def get_od(node1, node2, k):
+            ori_edge = '%s_%s' % (node1, node2)
+            dest = random.choice(destination)
+            return init_flow % (str(k), ori_edge, dest, car_num)
+        k = 1
+        for i in range(0, 8, 3):
+            for j in range(2):
+                node1 = 'I' + str(i + j)
+                node2 = 'I' + str(i + j + 1)
+                init_flow_context += get_od(node1, node2, k)
+                k += 1
+                init_flow_context += get_od(node2, node1, k)
+                k += 1
+        # avenues
+        for i in range(0, 3):
+            for j in range(0, 6, 3):
+                node1 = 'I' + str(i + j)
+                node2 = 'I' + str(i + j + 3)
+                init_flow_context += get_od(node1, node2, k)
+                k += 1
+                init_flow_context += get_od(node2, node1, k)
+                k += 1
+        return init_flow_context
     
     def _gen_add_str(self, ild_str, from_node, to_node, n_lane):
         edge_id = '%s_%s' % (from_node, to_node)
@@ -185,26 +244,26 @@ class NetworkGenerator():
     def gen_add_file(self):
         path = self.path + self.name_network +'.add.xml'
         ild_context = '<additional>\n'
-        ild_str = '  <laneAreaDetector file="ild.out" freq="1" id="ild:%s_%d" lane="e:%s_%d"\
+        ild_str = '  <laneAreaDetector file="ild.out" freq="1" id="%s_%d" lane="%s_%d"\
              pos="-100" endPos="-1"/>\n'
-        node_pair = [('I0','I3','P0','P6','I0'),('I1','I4','P1','I0','I2'),('I2','I5','P2','I1','P9'),
+        node_pair = [('I0','I3','P0','P6','I1'),('I1','I4','P1','I0','I2'),('I2','I5','P2','I1','P9'),
                     ('I3','I6','I0','P7','I4'),('I4','I7','I1','I3','I5'),('I5','I8','I2','I4','P10'),
                     ('I6','P3','I3','P8','I7'),('I7','P4','I4','I6','I8'),('I8','P5','I5','I7','P11')]
         for (cur,n,s,w,e) in node_pair:
-            ild_context += self._gen_con_node(ild_str, cur, n, s, w, e)
+            ild_context += self._gen_add_node(ild_str, cur, n, s, w, e)
         ild_context += '</additional>\n'
         self._write_file(path, ild_context)
     
     def gen_sumocfg(self, thread=None):
         path = self.path + self.name_network +'.sumocfg'
         if thread is None:
-            out_file = 'exp.rou.xml'
+            out_file = self.name_network+'.rou.xml'
         else:
-            out_file = 'exp_%d.rou.xml' % int(thread)
+            out_file = self.name_network+'_%d.rou.xml' % int(thread)
         config_context = '<configuration>\n  <input>\n'
-        config_context += '    <net-file value="exp.net.xml"/>\n'
+        config_context += '    <net-file value="'+self.name_network+'.net.xml"/>\n'
         config_context += '    <route-files value="%s"/>\n' % out_file
-        config_context += '    <additional-files value="exp.add.xml"/>\n'
+        config_context += '    <additional-files value="'+self.name_network+'.add.xml"/>\n'
         config_context += '  </input>\n  <time>\n'
         config_context += '    <begin value="0"/>\n    <end value="3600"/>\n'
         config_context += '  </time>\n</configuration>\n'
@@ -212,4 +271,5 @@ class NetworkGenerator():
 
 if __name__=='__main__':
     ng = NetworkGenerator('Grid9')
-    ng.create_network()
+    ng.create_network(init_density=0.2, seed=49)
+    # ng.gen_net_file()

@@ -98,11 +98,11 @@ class FlowHelper(object):
         XMLHelper.add_child_node(self.tree.getroot(), node)
 
     def add_sin_flow(self, id_prefix, vehicle_type, from_edge, to_edge, begin, end, n_slots,
-                     min_volume, max_volume):
+                     min_volume, max_volume, offset):
         """Add sin(t) time-vary flow."""
         time_slots = np.linspace(begin, end, n_slots + 1)
-        angles = np.linspace(0, 180, n_slots)
-        volumes = min_volume + (max_volume - min_volume) * np.sin(angles * np.pi / 180)
+        angles = np.linspace(0+offset, 180+offset, n_slots)
+        volumes = (max_volume + min_volume)/2 + (max_volume - min_volume)/2 * np.sin(angles * np.pi / 180)
         for i, vol in enumerate(volumes):
             flow_dict = {'id': id_prefix + str(i), 'type': vehicle_type,
                          'from': from_edge, 'to': to_edge,

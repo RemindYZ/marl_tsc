@@ -1,0 +1,11 @@
+<configuration>
+  <input>
+    <net-file value="Grid9.net.xml"/>
+    <route-files value="Grid9.rou.xml"/>
+    <additional-files value="Grid9.add.xml"/>
+  </input>
+  <time>
+    <begin value="0"/>
+    <end value="3600"/>
+  </time>
+</configuration>

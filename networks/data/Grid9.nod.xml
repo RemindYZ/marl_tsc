@@ -1,0 +1,23 @@
+<nodes>
+  <node id="I0" x="0.00" y="0.00" type="traffic_light"/>
+  <node id="I1" x="500.00" y="0.00" type="traffic_light"/>
+  <node id="I2" x="1000.00" y="0.00" type="traffic_light"/>
+  <node id="I3" x="0.00" y="500.00" type="traffic_light"/>
+  <node id="I4" x="500.00" y="500.00" type="traffic_light"/>
+  <node id="I5" x="1000.00" y="500.00" type="traffic_light"/>
+  <node id="I6" x="0.00" y="1000.00" type="traffic_light"/>
+  <node id="I7" x="500.00" y="1000.00" type="traffic_light"/>
+  <node id="I8" x="1000.00" y="1000.00" type="traffic_light"/>
+  <node id="P0" x="0.00" y="-200.00" type="priority"/>
+  <node id="P1" x="500.00" y="-200.00" type="priority"/>
+  <node id="P2" x="1000.00" y="-200.00" type="priority"/>
+  <node id="P3" x="0.00" y="1200.00" type="priority"/>
+  <node id="P4" x="500.00" y="1200.00" type="priority"/>
+  <node id="P5" x="1000.00" y="1200.00" type="priority"/>
+  <node id="P6" x="-200.00" y="0.00" type="priority"/>
+  <node id="P7" x="-200.00" y="500.00" type="priority"/>
+  <node id="P8" x="-200.00" y="1000.00" type="priority"/>
+  <node id="P9" x="1200.00" y="0.00" type="priority"/>
+  <node id="P10" x="1200.00" y="500.00" type="priority"/>
+  <node id="P11" x="1200.00" y="1000.00" type="priority"/>
+</nodes>

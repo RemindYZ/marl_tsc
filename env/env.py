@@ -6,7 +6,9 @@ import traci
 import traci.constants as tc
 import xml.etree.cElementTree as ET
 
-LENGTH = 100
+ILD_LENGTH = 100
+VER_LENGTH = 5
+# N_LANES = 3
 NEIGHBOR_MAP = {'I0':['I1', 'I3'],
                 'I1':['I0', 'I2', 'I4'],
                 'I2':['I1', 'I5'],
@@ -50,7 +52,9 @@ class TrafficEnv:
         self.cur_episode = 0
         self.neighbor_map = NEIGHBOR_MAP
         self.phase_map = PHASE_MAP
-        self.length = LENGTH
+        self.ild_length = ILD_LENGTH
+        self.ver_length = VER_LENGTH
+        # self.n_lanes = N_LANES
 
         # params from config
         self.sim_seed = cfg_param.getint('sim_seed')
@@ -83,8 +87,8 @@ class TrafficEnv:
                     self.output_path + ('%s_%s_trip.xml' % (self.name, self.agent))]
         traci.start(command, port=self.port)
         for i in range(self.n_junction):
-            traci.junction.subscribeContext('I'+str(i), tc.CMD_GET_VEHICLE_VARIABLE, self.length,
-                                            [tc.VAR_LANE_ID, tc.VAR_ROAD_ID, tc.VAR_LANEPOSITION,
+            traci.junction.subscribeContext('I'+str(i), tc.CMD_GET_VEHICLE_VARIABLE, self.ild_length,
+                                            [tc.VAR_LANE_ID, tc.VAR_LANEPOSITION,
                                             tc.VAR_SPEED, tc.VAR_WAITING_TIME])
 
     def _init_node(self):
@@ -101,8 +105,32 @@ class TrafficEnv:
         return nodes
 
     def _get_obs(self, cx_res):
-        obs = None
-        return obs
+        width = int(self.ild_length/self.ver_length)
+        position, phase = {}, {}      
+        for node_name in self.nodes_name:
+            height = int(len(self.nodes[node_name].lanes_in)/2)
+            position[node_name] = np.zeros(shape=(height, width))
+            phase[node_name] = np.zeros(shape=(int(len(self.phase_map)/2)))
+            current_phase = traci.trafficlight.getPhase(node_name)
+            phase[node_name][current_phase] = 1
+        if not cx_res:
+            return [position, phase]
+        for node_name, res in cx_res.items():
+            for _, mes in res.items():
+                f_node, t_node, lane = mes[tc.VAR_LANE_ID].split('_')
+                if t_node == node_name:
+                    hind = self._get_position_hindex(f_node, t_node, lane)
+                    wind = int(mes[tc.VAR_POSITION] / self.ver_length)
+                    if wind < 0 or wind >= width:
+                        raise ValueError(str(wind)+'  w_ind is wrong')
+                    position[node_name][hind, wind] += 1
+            if np.amax(position[node_name]) > 2:
+                raise ValueError('max value of position need <= 2')
+        return [position, phase]
+    
+    def _get_position_hindex(self, from_node, to_node, n_lane):
+        ind = 0
+        return ind
     
     def _get_reward(self, cx_res, action):
         reward = None

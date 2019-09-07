@@ -22,6 +22,15 @@ PHASE_MAP = {0:'GGGrrrrrGGGrrrrr', 1:'yyyrrrrryyyrrrrr',
              2:'rrrGrrrrrrrGrrrr', 3:'rrryrrrrrrryrrrr',
              4:'rrrrGGGrrrrrGGGr', 5:'rrrryyyrrrrryyyr',
              6:'rrrrrrrGrrrrrrrG', 7:'rrrrrrryrrrrrrry'}
+HIND_MAP = {'I0':{'P0':0, 'I3':0, 'P6':3, 'I1':3},
+            'I1':{'P1':0, 'I4':0, 'I0':3, 'I2':3},
+            'I2':{'P2':0, 'I5':0, 'I1':3, 'P9':3},
+            'I3':{'I0':0, 'I6':0, 'P7':3, 'I4':3},
+            'I4':{'I1':0, 'I7':0, 'I3':3, 'I5':3},
+            'I5':{'I2':0, 'I8':0, 'I4':3, 'P10':3},
+            'I6':{'I3':0, 'P3':0, 'P8':3, 'I7':3},
+            'I7':{'I4':0, 'P4':0, 'I6':3, 'I8':3},
+            'I8':{'I5':0, 'P5':0, 'I7':3, 'P11':3}}
 
 class TrafficNode:
     def __init__(self, name, dim_memory, neighbor=[]):
@@ -54,7 +63,7 @@ class TrafficEnv:
         self.phase_map = PHASE_MAP
         self.ild_length = ILD_LENGTH
         self.ver_length = VER_LENGTH
-        # self.n_lanes = N_LANES
+        self.hind_map = HIND_MAP
 
         # params from config
         self.sim_seed = cfg_param.getint('sim_seed')
@@ -129,8 +138,7 @@ class TrafficEnv:
         return [position, phase]
     
     def _get_position_hindex(self, from_node, to_node, n_lane):
-        ind = 0
-        return ind
+        return n_lane + self.hind_map.get(to_node).get(from_node)
     
     def _get_reward(self, cx_res, action):
         reward = None

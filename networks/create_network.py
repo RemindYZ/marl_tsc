@@ -154,7 +154,7 @@ class NetworkGenerator():
                  ('rrrrGGGrrrrrGGGr',25), ('rrrryyyrrrrryyyr',3),
                  ('rrrrrrrGrrrrrrrG',15), ('rrrrrrryrrrrrrry',3)]
         for ind in range(self.n_intersection*self.n_intersection):
-            offset = random.randint(0,91)
+            offset = random.randint(0,20)
             node_id = 'I' + str(ind)
             tls_context += tls_str % (node_id, offset)
             for (state, duration) in phases:

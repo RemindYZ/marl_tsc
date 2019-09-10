@@ -29,7 +29,7 @@ class Replay_Buffer():
             experience = self.experience(states, actions, rewards, next_states, local_memorys, dones)
             self.memory.append(experience)
     
-    def sample(self, num_experience):
+    def sample(self, num_experiences=None, separate_out_data_types=True):
         experiences = self.pick_experiences(num_experiences)
         if separate_out_data_types:
             states, actions, rewards, next_states, local_memorys, dones = self.separate_out_data_types(experiences)

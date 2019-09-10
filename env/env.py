@@ -71,7 +71,7 @@ class TrafficEnv:
         self.name = 'Grid9'
         self.agent = 'ma2c'
         self.dim_memory = 16
-        self.output_path = '.'
+        self.output_path = './logs/'
         self.control_interval_sec = 5
         self.yellow_interval_sec = 2
         self.episode_length_sec = 3600
@@ -86,10 +86,10 @@ class TrafficEnv:
         #     os.makedirs(self.output_path+'./logs')
         self.metric_data = []
         self.step_data = []
-        self.metrics_file = self.output_path + '/logs/metrics.csv'
+        self.metrics_file = self.output_path + 'metrics.csv'
         # with open(self.metrics_file, 'w') as f:
         #     f.write('episode,time,step,number_total_car,number_departed_car,number_arrived_car,avg_wait_sec,avg_speed_mps,avg_queue\n')
-        self.step_file = self.output_path + '/logs/step.csv'
+        self.step_file = self.output_path + 'step.csv'
         # with open(self.step_file, 'w') as f:
         #     f.write('episode,time,step,action,reward_jam,reward_waiting,reward,total_reward\n')
 

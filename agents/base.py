@@ -35,7 +35,7 @@ class LocalStateEncoderBiLSTM(nn.Module):
 
 class MemoryReader(nn.Module):
     def __init__(self, state_size, memory_size, h_size, device):
-        super(MemoryRead, self).__init__()
+        super(MemoryReader, self).__init__()
         self.device = device
         self.state_size = state_size
         self.memory_size = memory_size

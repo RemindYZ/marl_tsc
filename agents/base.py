@@ -1,13 +1,8 @@
-import logging
-import os
-import sys
 import random
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as func
-import time
-from torch.optim import optimizer
 
 class LocalStateEncoderBiLSTM(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, output_size, phase_size, device):
@@ -64,4 +59,53 @@ class MemoryWriter(nn.Module):
         z = self.fc_z(torch.cat((state, memory), dim=1)).sigmoid()
         c = self.fc_c(torch.cat((state, r * memory), dim=1)).tanh()
         out = (1 - z) * memory + z * c
+        return out
+
+class Actor(nn.Module):
+    def __init__(self, encoder, reader, writer, h_size, action_size, n_neighbor, device):
+        super(Actor, self).__init__()
+        self.device = device
+        self.encoder = encoder
+        self.reader = reader
+        self.writer = writer
+        self.h_size = h_size
+        self.action_size = action_size
+        self.n_neighbor = n_neighbor
+        inp_size = [encoder.output_size + reader.memory_size * (2 + n_neighbor)] + h_size[:-1]
+        self.fc = [nn.Linear(inp, oup) for inp, oup in zip(inp_size, h_size)]
+        self.out_fc = nn.Linear(h_size[-1], action_size)
+    
+    def forward(self, state, phase, local_memory, neighbor_memory):
+        e = self.encoder(state, phase)
+        r_l = self.reader(e, local_memory)
+        m_l = self.writer(e, local_memory)
+        r_N = [self.reader(e, n_m) for n_m in neighbor_memory]
+        out = torch.cat([e, r_l, m_l] + r_N, dim=1)
+        for fc in self.fc:
+            out = fc(out)
+        if self.action_size == 1:
+            out = self.out_fc(out).sigmoid()
+        else:
+            out = self.out_fc(out).softmax()
+        return out, m_l
+
+class Critic(nn.Module):
+    def __init__(self, encoder, h_size, n_inter, device):
+        super(Critic, self).__init__()
+        self.device = device
+        self.encoder = encoder
+        self.h_size = h_size
+        self.n_inter = n_inter
+        self.device = device
+        inp_size = [(encoder.output_size + 1) * n_inter] + h_size[:-1]
+        self.fc = [nn.Linear(inp, oup) for inp, oup in zip(inp_size, h_size)]
+        self.out_fc = nn.Linear(h_size[-1], 1)
+    
+    def forward(self, state, phase, action):
+        e =[self.encoder(s, p) for s, p in zip(state, phase)]
+        inp = [torch.cat((ei, ai), dim=1) for ei, ai in zip(e, action)]
+        out = torch.cat(inp, dim=1)
+        for fc in self.fc:
+            out = fc(out)
+        out = self.out_fc(out)
         return out

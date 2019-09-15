@@ -79,9 +79,10 @@ class MA_MDDPG():
             if len(self.replaybuffer) >= self.parameters["batch_size"]:
                 for _ in range(self.parameters["learning_step_per_session"]):
                     states, actions, rewards, next_states, local_memorys, dones = self.replaybuffer.sample()
-                    self.critic_learn()
-                    self.actor_learn()
-            self.replaybuffer.add_experience(self.obs, self.actions, self.rewards, self.next_obs, self.memory, self.dones)
+                    self.critic_learn(states, actions, rewards, next_states, local_memorys, dones)
+                    self.actor_learn(states, local_memorys)
+            obs, actions, rewards, next_obs, memory = self._dict_to_numpy(self.obs, self.actions, self.rewards, self.next_obs, self.memory)
+            self.replaybuffer.add_experience(obs, actions, rewards, next_obs, memory, self.dones)
             self.obs = self.next_obs
             self.global_step_number += 1
             if self.dones == True: break
@@ -114,10 +115,21 @@ class MA_MDDPG():
         self.memory = {actor.name:actor.get_local_memory() for actor in self.actors}
         return actions
     
-    def critic_learn(self):
+    def _dict_to_numpy(self, states, actions, rewards, next_states, memory):
+        state_numpy = np.stack([states[a_n] for a_n in self.actor_names], axis=2).reshape(-1)
+        action_numpy = np.stack([actions[a_n] for a_n in self.actor_names], axis=2).reshape(-1)
+        reward_numpy = np.stack([rewards[a_n] for a_n in self.actor_names], axis=2).reshape(-1)
+        n_state_numpy = np.stack([next_states[a_n] for a_n in self.actor_names], axis=2).reshape(-1)
+        memory_numpy = np.stack([memory[a_n] for a_n in self.actor_names], axis=2).reshape(-1)
+        return state_numpy, action_numpy, reward_numpy, n_state_numpy, memory_numpy
+    
+    def critic_learn(self, states, actions, rewards, next_states, local_memorys, dones):
         pass
 
-    def actor_learn(self):
+    def actor_learn(self, states, local_memorys):
+        pass
+
+    def compute_loss(self, states, actions, rewards, next_states, local_memorys, dones):
         pass
 
 

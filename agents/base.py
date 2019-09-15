@@ -82,7 +82,7 @@ class Actor(nn.Module):
         r_N = [self.reader(e, n_m) for n_m in neighbor_memory]
         out = torch.cat([e, r_l, m_l] + r_N, dim=1)
         for fc in self.fc:
-            out = fc(out)
+            out = fc(out).relu()
         if self.action_size == 1:
             out = self.out_fc(out).sigmoid()
         else:
@@ -102,10 +102,10 @@ class Critic(nn.Module):
         self.out_fc = nn.Linear(h_size[-1], 1)
     
     def forward(self, state, phase, action):
-        e =[self.encoder(s, p) for s, p in zip(state, phase)]
+        e =[self.encoder(state[:,:,:,ind], phase[:,:,ind]) for ind in range(state.shape[-1])]
         inp = [torch.cat((ei, ai), dim=1) for ei, ai in zip(e, action)]
         out = torch.cat(inp, dim=1)
         for fc in self.fc:
-            out = fc(out)
+            out = fc(out).relu()
         out = self.out_fc(out)
         return out

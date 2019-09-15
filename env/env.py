@@ -23,7 +23,7 @@ PHASE_MAP = {0:'GGGrrrrrGGGrrrrr', 1:'yyyrrrrryyyrrrrr',
              2:'rrrGrrrrrrrGrrrr', 3:'rrryrrrrrrryrrrr',
              4:'rrrrGGGrrrrrGGGr', 5:'rrrryyyrrrrryyyr',
              6:'rrrrrrrGrrrrrrrG', 7:'rrrrrrryrrrrrrry'}
-HIND_MAP = {'I0':{'P0':0, 'I3':0, 'P6':3, 'I1':3},
+WIND_MAP = {'I0':{'P0':0, 'I3':0, 'P6':3, 'I1':3},
             'I1':{'P1':0, 'I4':0, 'I0':3, 'I2':3},
             'I2':{'P2':0, 'I5':0, 'I1':3, 'P9':3},
             'I3':{'I0':0, 'I6':0, 'P7':3, 'I4':3},
@@ -34,25 +34,14 @@ HIND_MAP = {'I0':{'P0':0, 'I3':0, 'P6':3, 'I1':3},
             'I8':{'I5':0, 'P5':0, 'I7':3, 'P11':3}}
 
 class TrafficNode:
-    def __init__(self, name, dim_memory, neighbor=[]):
+    def __init__(self, name, neighbor=[]):
         self.name = name
-        self.dim_memory = dim_memory
         self.neighbor = neighbor
         self.lanes_in = []
         self.ilds_in = []
         # self.phase_id = -1 
-        self.memory = np.random.randn(self.dim_memory)
     
-    def write(self, mes):
-        self.memory = mes
-    
-    def read(self):
-        return self.memory
-    
-    def reset(self, seed=None):
-        if seed:
-            np.random.seed(seed)
-        self.memory = np.random.randn(self.dim_memory)
+
 
 
 class TrafficEnv:
@@ -65,12 +54,11 @@ class TrafficEnv:
         self.phase_map = PHASE_MAP
         self.ild_length = ILD_LENGTH
         self.ver_length = VER_LENGTH
-        self.hind_map = HIND_MAP
+        self.wind_map = WIND_MAP
 
         self.sim_seed = 42
         self.name = 'Grid9'
         self.agent = 'ma2c'
-        self.dim_memory = 16
         self.output_path = './logs/'
         self.control_interval_sec = 5
         self.yellow_interval_sec = 2
@@ -127,16 +115,16 @@ class TrafficEnv:
             else:
                 logging.info('node %s can not be found' % node_name)
                 neighbor = []
-            nodes[node_name] = TrafficNode(node_name, self.dim_memory, neighbor)
+            nodes[node_name] = TrafficNode(node_name, neighbor)
             nodes[node_name].lanes_in = traci.trafficlight.getControlledLanes(node_name)
             nodes[node_name].ilds_in = nodes[node_name].lanes_in
         return nodes
 
     def _get_obs(self, cx_res):
-        width = int(self.ild_length/self.ver_length)
+        height = int(self.ild_length/self.ver_length)
         position, phase = {}, {}      
         for node_name in self.nodes_name:
-            height = int(len(self.nodes[node_name].lanes_in)/2)
+            width = int(len(self.nodes[node_name].lanes_in)/2)
             position[node_name] = np.zeros(shape=(height, width))
             phase[node_name] = np.zeros(shape=(int(len(self.phase_map)/2)))
             current_phase = int(traci.trafficlight.getPhase(node_name)/2)
@@ -149,21 +137,21 @@ class TrafficEnv:
             for _, mes in res.items():
                 f_node, t_node, lane = mes[tc.VAR_LANE_ID].split('_')
                 if t_node == node_name:
-                    hind = self._get_position_hindex(f_node, t_node, lane)
+                    wind = self._get_position_windex(f_node, t_node, lane)
                     if f_node[0] == 'I':
-                        wind = int((500 - 2 * self.margin - mes[tc.VAR_LANEPOSITION]) / self.ver_length)
+                        hind = int((500 - 2 * self.margin - mes[tc.VAR_LANEPOSITION]) / self.ver_length)
                     elif f_node[0] == 'P':
-                        wind = int((200 - self.margin - mes[tc.VAR_LANEPOSITION]) / self.ver_length)
-                    if wind < 0 or wind >= width:
+                        hind = int((200 - self.margin - mes[tc.VAR_LANEPOSITION]) / self.ver_length)
+                    if hind < 0 or hind >= width:
                         logging.info(str(res))
-                        raise ValueError(str(wind)+'  w_ind is wrong')
+                        raise ValueError(str(hind)+'  w_ind is wrong')
                     position[node_name][hind, wind] += 1
             if np.amax(position[node_name]) > 2:
                 raise ValueError('max value of position need <= 2')
         return [position, phase]
     
-    def _get_position_hindex(self, from_node, to_node, n_lane):
-        return int(n_lane) + self.hind_map[to_node].get(from_node)
+    def _get_position_windex(self, from_node, to_node, n_lane):
+        return int(n_lane) + self.wind_map[to_node].get(from_node)
     
     def _get_reward(self, cx_res, action):
         reward = {}
@@ -252,8 +240,8 @@ class TrafficEnv:
     
     def reset(self, gui=False):
         # return obs
-        for node_name in self.nodes_name:
-            self.nodes[node_name].reset()
+        # for node_name in self.nodes_name:
+        #     self.nodes[node_name].reset()
         self.cur_episode += 1
         self.cur_step = 0
         # self.close()

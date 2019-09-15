@@ -117,6 +117,7 @@ class TrafficEnv:
             traci.junction.subscribeContext(node_name, tc.CMD_GET_VEHICLE_VARIABLE, self.ild_length,
                                             [tc.VAR_LANE_ID, tc.VAR_LANEPOSITION,
                                             tc.VAR_SPEED, tc.VAR_WAITING_TIME])
+        
 
     def _init_node(self):
         nodes = {}

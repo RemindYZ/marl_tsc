@@ -45,7 +45,7 @@ class TrafficNode:
 
 
 class TrafficEnv:
-    def __init__(self, cfg_sumo, port=4343, gui=False):
+    def __init__(self, cfg_sumo, output_path='./logs/', port=4343, gui=False):
         self.cfg_sumo = cfg_sumo
         self.port = port
         self.cur_episode = 0
@@ -59,7 +59,7 @@ class TrafficEnv:
         self.sim_seed = 42
         self.name = 'Grid9'
         self.agent = 'ma2c'
-        self.output_path = './logs/'
+        self.output_path = output_path
         self.control_interval_sec = 5
         self.yellow_interval_sec = 2
         self.episode_length_sec = 3600
@@ -124,7 +124,8 @@ class TrafficEnv:
         height = int(self.ild_length/self.ver_length)
         position, phase = {}, {}      
         for node_name in self.nodes_name:
-            width = int(len(self.nodes[node_name].lanes_in)/2)
+            width = int(len(self.nodes[node_name].lanes_in)/2) - 2
+            # print(self.nodes[node_name].lanes_in)
             position[node_name] = np.zeros(shape=(height, width))
             phase[node_name] = np.zeros(shape=(int(len(self.phase_map)/2)))
             current_phase = int(traci.trafficlight.getPhase(node_name)/2)
@@ -142,9 +143,9 @@ class TrafficEnv:
                         hind = int((500 - 2 * self.margin - mes[tc.VAR_LANEPOSITION]) / self.ver_length)
                     elif f_node[0] == 'P':
                         hind = int((200 - self.margin - mes[tc.VAR_LANEPOSITION]) / self.ver_length)
-                    if hind < 0 or hind >= width:
+                    if hind < 0 or hind >= height:
                         logging.info(str(res))
-                        raise ValueError(str(hind)+'  w_ind is wrong')
+                        raise ValueError(str(hind)+'  h_ind is wrong')
                     position[node_name][hind, wind] += 1
             if np.amax(position[node_name]) > 2:
                 raise ValueError('max value of position need <= 2')
@@ -159,8 +160,12 @@ class TrafficEnv:
         reward_waiting = {}
         for node_name in self.nodes_name:
             if not cx_res:
-                reward[node_name] = 0
+                reward[node_name], reward_jam[node_name], reward_waiting[node_name] = 0, 0, 0
+                continue
             res = cx_res.get(node_name)
+            if res is None:
+                reward[node_name], reward_jam[node_name], reward_waiting[node_name] = 0, 0, 0
+                continue
             jam_length, waitingtime = 0, 0
             for ild in self.nodes[node_name].ilds_in:
                 jam_length += traci.lanearea.getJamLengthVehicle(ild)
@@ -280,39 +285,46 @@ class TrafficEnv:
 
     def output_data(self):
         step_data = pd.DataFrame(self.step_data)
-        step_data.to_csv(self.output_path +'/logs/' +  ('%s_%s_step.csv' % (self.name, self.agent)))
+        step_data.to_csv(self.output_path  +  ('%s_%s_step.csv' % (self.name, self.agent)))
         metric_data = pd.DataFrame(self.metric_data)
-        metric_data.to_csv(self.output_path + '/logs/' + ('%s_%s_metric.csv' % (self.name, self.agent)))
+        metric_data.to_csv(self.output_path  + ('%s_%s_metric.csv' % (self.name, self.agent)))
 
 if __name__ =='__main__':
     logging.basicConfig(format='%(asctime)s [%(levelname)s] %(message)s',
                         level=logging.WARNING)
     Grid9 = TrafficEnv('../networks/data/Grid9.sumocfg', gui=True)
     action = {}
-    for node_name in Grid9.nodes_name:
-        action[node_name] = 0
-    logging.info("step 0")
-    Grid9.step(action)
-    logging.info("step 1")
-    Grid9.step(action)
-    logging.info("step 2")
-    Grid9.step(action)
-    logging.info("step 3")
-    Grid9.step(action)
-    logging.info("step 4")
-    Grid9.step(action)
-    logging.info("reset")
-    Grid9.reset(gui=True)
-    logging.info("step 0")
-    Grid9.step(action)
-    logging.info("step 1")
-    Grid9.step(action)
-    logging.info("step 2")
-    Grid9.step(action)
-    logging.info("step 3")
-    Grid9.step(action)
-    logging.info("step 4")
-    Grid9.step(action)
+    import random
+    while True:
+        for node_name in Grid9.nodes_name:
+            action[node_name] = random.randint(0,1)
+        _, _, done, _ = Grid9.step(action)
+        if done:
+            break
+
+    
+    # logging.info("step 0")
+    # Grid9.step(action)
+    # logging.info("step 1")
+    # Grid9.step(action)
+    # logging.info("step 2")
+    # Grid9.step(action)
+    # logging.info("step 3")
+    # Grid9.step(action)
+    # logging.info("step 4")
+    # Grid9.step(action)
+    # logging.info("reset")
+    # Grid9.reset(gui=True)
+    # logging.info("step 0")
+    # Grid9.step(action)
+    # logging.info("step 1")
+    # Grid9.step(action)
+    # logging.info("step 2")
+    # Grid9.step(action)
+    # logging.info("step 3")
+    # Grid9.step(action)
+    # logging.info("step 4")
+    # Grid9.step(action)
     Grid9.output_data()
     Grid9.close()
     

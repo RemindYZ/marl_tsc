@@ -103,7 +103,7 @@ class Critic(nn.Module):
     
     def forward(self, state, phase, action):
         e =[self.encoder(state[:,:,:,ind], phase[:,:,ind]) for ind in range(state.shape[-1])]
-        inp = [torch.cat((e[ind], a[:,ind]), dim=1) for ind in range(state.shape[-1])]
+        inp = [torch.cat((e[ind], action[:,ind].reshape(-1,1)), dim=1) for ind in range(state.shape[-1])]
         out = torch.cat(inp, dim=1)
         for fc in self.fc:
             out = fc(out).relu()

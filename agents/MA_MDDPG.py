@@ -5,9 +5,9 @@ from torch import optim
 import random
 import numpy as np
 from utilities.ReplayBuffer import Replay_Buffer
-from utilities.logger import Logger
-from MemoryBasedDDPG import MemoryDDPG
-from base import LocalStateEncoderBiLSTM
+# from utilities.logger import Logger
+from agents.MemoryDDPG import MemoryDDPG
+from agents.base import LocalStateEncoderBiLSTM
 
 class MA_MDDPG():
     def __init__(self, env, parameters,
@@ -25,8 +25,9 @@ class MA_MDDPG():
         self.encoder_hyperparameters = encoder_hyperparameters
         self.critic_hyperparameters = critic_hyperparameters
         self.actor_hyperparameters = actor_hyperparameters
-        self.device = "cuda:0"
-        self.logger = Logger(self.parameters["log_dir"])
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        # self.logger = Logger(self.parameters["log_dir"])
+        self.save_path = parameters["model_dir"]
         self.set_random_seeds(parameters["random_seed"])
         self.epsilon_exploration = parameters["epsilon_exploration"]
         self.replaybuffer = Replay_Buffer(parameters["buffer_size"], parameters["batch_size"], parameters["random_seed"])
@@ -49,7 +50,11 @@ class MA_MDDPG():
                        actor_hyperparameters, self.device) for actor in self.actor_names]
         self.memory = {actor.name:actor.get_local_memory() for actor in self.actors}
         self.global_step_number = 0
-        self.episode_number = 0
+        self.episode_number = 1
+
+        self.total_reward_per_epsiode = []
+        self.total_critic_loss = []
+        self.total_actor_loss = []
 
     
     def set_random_seeds(self, random_seed):
@@ -67,10 +72,10 @@ class MA_MDDPG():
     
     def get_neighbor_memory(self, name):
         neighbor = self.neighbor_map[name]
-        return [self.memory[self.actors.index(n_b)].clone() for n_b in neighbor]
+        return [self.memory[n_b].clone().reshape(1, -1).to(self.device) for n_b in neighbor]
     
     def get_local_memory(self, name):
-        return self.memory[self.actors.index(name)].clone()
+        return self.memory[name].clone().reshape(1, -1).to(self.device)
     
     def copy_encoder_parameters(self, from_model, to_model):
         for to_model, from_model in zip(to_model.parameters(), from_model.parameters()):
@@ -78,9 +83,11 @@ class MA_MDDPG():
     
     def step(self):
         self.obs = self.env.reset()
+        reward = [0 for _ in range(self.parameters["n_inter"])]
         while True:
             self.actions = self._pick_action(self.obs)
             self.next_obs, self.rewards, self.dones, _ = self.env.step(self.actions)
+            reward = [reward[ac_ind] + self.rewards[ac_name] for ac_ind, ac_name in enumerate(self.actor_names)]
             if len(self.replaybuffer) >= self.parameters["batch_size"]:
                 for _ in range(self.parameters["learning_step_per_session"]):
                     states, phases, actions, rewards, next_states, next_phases, local_memorys, dones = self.replaybuffer.sample()
@@ -91,6 +98,7 @@ class MA_MDDPG():
             self.obs = self.next_obs
             self.global_step_number += 1
             if self.dones == True: break
+        self.total_reward_per_epsiode.append(reward)
         self.episode_number += 1
                 
     
@@ -100,7 +108,8 @@ class MA_MDDPG():
         actions = {}
         all_new_memory = []
         for actor_ind, actor_name in enumerate(self.actor_names):
-            po, ph = position[actor_name], phase[actor_name]
+            po = torch.tensor(position[actor_name], dtype=torch.float).reshape(1, self.state_height, -1).to(self.device)
+            ph = torch.tensor(phase[actor_name], dtype=torch.float).reshape(1, self.phase_size).to(self.device)
             n_memory = self.get_neighbor_memory(actor_name)
             l_memory = self.get_local_memory(actor_name)
             self.actors[actor_ind].actor.eval()
@@ -116,7 +125,7 @@ class MA_MDDPG():
             actions[actor_name] = action 
             all_new_memory.append(new_memory)
         for actor_ind, actor in enumerate(self.actors):
-            actor.update_memory(all_new_memory[actor_ind])
+            actor.update_local_memory(all_new_memory[actor_ind])
         self.memory = {actor.name:actor.get_local_memory() for actor in self.actors}
         return actions
     
@@ -134,11 +143,12 @@ class MA_MDDPG():
     
     def critic_learn(self, states, phases, actions, rewards, next_states, next_phases, local_memorys, dones):
         loss = self.compute_loss(states, phases, actions, rewards, next_states, next_phases, local_memorys, dones)
+        self.total_critic_loss.append(loss)
         self._optim_critic(loss)
         tau = self.parameters["critic_tau"]
         for actor in self.actors:
             for f_model, t_model in zip(actor.critic.parameters(), actor.critic_target.parameters()):
-                t_model.data.copy_(tau*f_model.data+(1-tau)*t_model.data)
+                t_model.data.copy_((1-tau)*f_model.data+tau*t_model.data)
 
     def actor_learn(self, states, phases, local_memorys):
         if self.dones:
@@ -149,15 +159,16 @@ class MA_MDDPG():
         local_memory = local_memorys.reshape(-1, self.parameters["dim_memory"], self.parameters["n_inter"])
         neighbor_map = [[self.actor_names.index(neigh) for neigh in self.env.neighbor_map[ac_name]] 
                         for ac_in, ac_name in enumerate(self.actor_names)]
-        neighbor_memory = [local_memory[:,:,ind] for ind in neighbor_map]
-        actions_pred = torch.cat([self.actors[ac_in].actor(state[:,:,:,ac_in], phase[:,:,ac_in], local_memory[:,:,ac_in], neighbor_memory[ac_in]) 
+        neighbor_memory = [[local_memory[:,:,i].squeeze(-1) for i in ind] for ind in neighbor_map]
+        actions_pred = torch.cat([self.actors[ac_in].actor(state[:,:,:,ac_in], phase[:,:,ac_in], local_memory[:,:,ac_in], neighbor_memory[ac_in])[0]
                             for ac_in, _ in enumerate(self.actor_names)], dim=1).reshape(-1, self.parameters["n_inter"])
-        action_loss = [-self.actors[i].critic(state, phase, actions_pred).mean() for i in range(len(self.parameters["n_inter"]))]
+        action_loss = [-self.actors[i].critic(state, phase, actions_pred).mean() for i in range(self.parameters["n_inter"])]
+        self.total_actor_loss.append(action_loss)
         self._optim_actor(action_loss)
         tau = self.parameters["actor_tau"]
         for actor in self.actors:
             for f_model, t_model in zip(actor.actor.parameters(), actor.actor_target.parameters()):
-                t_model.data.copy_(tau*f_model.data+(1-tau)*t_model.data)
+                t_model.data.copy_((1-tau)*f_model.data+tau*t_model.data)
 
     def compute_loss(self, states, phases, actions, rewards, next_states, next_phases, local_memorys, dones):
         state = states.reshape(-1, self.state_height, self.encoder_hyperparameters["state_size"], self.parameters["n_inter"])
@@ -169,10 +180,10 @@ class MA_MDDPG():
         local_memory = local_memorys.reshape(-1, self.parameters["dim_memory"], self.parameters["n_inter"])
         neighbor_map = [[self.actor_names.index(neigh) for neigh in self.env.neighbor_map[ac_name]] 
                         for ac_in, ac_name in enumerate(self.actor_names)]
-        neighbor_memory = [local_memory[:,:,ind] for ind in neighbor_map]
+        neighbor_memory = [[local_memory[:,:,i].squeeze(-1) for i in ind] for ind in neighbor_map]
         done = dones.reshape(-1,1)
         with torch.no_grad():
-            actions_next = torch.cat([self.actors[ac_in].actor_target(next_state[:,:,:,ac_in], next_phase[:,:,ac_in], local_memory[:,:,ac_in], neighbor_memory[ac_in]) 
+            actions_next = torch.cat([self.actors[ac_in].actor_target(next_state[:,:,:,ac_in], next_phase[:,:,ac_in], local_memory[:,:,ac_in], neighbor_memory[ac_in])[0] 
                             for ac_in, _ in enumerate(self.actor_names)], dim=1).reshape(-1, self.parameters["n_inter"])
             critic_targets_next = torch.cat([self.actors[ac_in].critic_target(next_state, next_phase, actions_next) 
                                    for ac_in, _ in enumerate(self.actor_names)], dim=1).reshape(-1, self.parameters["n_inter"])
@@ -185,7 +196,7 @@ class MA_MDDPG():
     def _optim_critic(self, loss, clipping_norm=None):
         for actor_ind, actor in enumerate(self.actors):
             actor.critic_optimizer.zero_grad()
-            loss[actor_ind].backward()
+            loss[actor_ind].backward(retain_graph=True)
             if clipping_norm is not None:
                 torch.nn.utils.clip_grad_norm_(actor.critic.parameters(), clipping_norm)
             actor.critic_optimizer.step()
@@ -193,10 +204,15 @@ class MA_MDDPG():
     def _optim_actor(self, loss, clipping_norm=None):
         for actor_ind, actor in enumerate(self.actors):
             actor.actor_optimizer.zero_grad()
-            loss[actor_ind].backward()
+            loss[actor_ind].backward(retain_graph=True)
             if clipping_norm is not None:
                 torch.nn.utils.clip_grad_norm_(actor.actor.parameters(), clipping_norm)
             actor.actor_optimizer.step()
+    
+    def save_model(self):
+        torch.save(self.encoder, self.save_path+"encoder/checkpoint")
+        for i, actor in enumerate(self.actors):
+            torch.save(actor, self.save_path + "actor/" + str(i)+"/checkpoint")
 
 
 

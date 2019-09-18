@@ -11,7 +11,7 @@ parameters = {
     "model_dir": "./experiments/model/",
     "epsilon_exploration": 0.3,
     "buffer_size": 10000,
-    "batch_size": 64,
+    "batch_size": 256,
     "n_inter": 9,
     "learning_step_per_session": 1,
     "critic_tau": 0.995, 
@@ -46,3 +46,4 @@ actor_hyperparameters = {
 Grid9 = TrafficEnv('./networks/data/Grid9.sumocfg', parameters["log_dir"], gui=False)
 Agent = MA_MDDPG(Grid9, parameters, encoder_hyperparameters, critic_hyperparameters, actor_hyperparameters)
 Agent.step()
+Agent.save_model()

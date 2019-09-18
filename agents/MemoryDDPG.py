@@ -22,27 +22,27 @@ class MemoryDDPG():
         self.reader = MemoryReader(actor_hyperparameters["state_size"], 
                                    parameters["dim_memory"],
                                    actor_hyperparameters["reader_h_size"],
-                                   self.device)
+                                   self.device).to(self.device)
         self.reader_target = MemoryReader(actor_hyperparameters["state_size"], 
                                           parameters["dim_memory"],
                                           actor_hyperparameters["reader_h_size"],
-                                          self.device)
+                                          self.device).to(self.device)
         self.copy_all_parameters(self.reader, self.reader_target)
         
         self.writer = MemoryWriter(actor_hyperparameters["state_size"],
                                    parameters["dim_memory"],
-                                   self.device)
+                                   self.device).to(self.device)
         self.writer_target = MemoryWriter(actor_hyperparameters["state_size"],
                                           parameters["dim_memory"],
-                                          self.device)
+                                          self.device).to(self.device)
         self.copy_all_parameters(self.writer, self.writer_target)
 
         self.critic = Critic(self.encoder, critic_hyperparameters["h_size"],
                              parameters["n_inter"],
-                             self.device)
+                             self.device).to(self.device)
         self.critic_target = Critic(self.encoder_target, critic_hyperparameters["h_size"],
                                     parameters["n_inter"],
-                                    self.device)
+                                    self.device).to(self.device)
         self.copy_all_parameters(self.critic, self.critic_target)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=critic_hyperparameters["learning_rate"])
 
@@ -50,12 +50,12 @@ class MemoryDDPG():
                            actor_hyperparameters["h_size"],
                            actor_hyperparameters["action_size"],
                            parameters["n_neighbor"][name],
-                           self.device)
+                           self.device).to(self.device)
         self.actor_target = Actor(self.encoder_target, self.reader_target, self.writer_target, 
                                   actor_hyperparameters["h_size"],
                                   actor_hyperparameters["action_size"],
                                   parameters["n_neighbor"][name],
-                                  self.device)
+                                  self.device).to(self.device)
         self.copy_all_parameters(self.actor, self.actor_target)
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=actor_hyperparameters["learning_rate"])
 
@@ -67,7 +67,7 @@ class MemoryDDPG():
             to_model.data.copy_(from_model.data.clone())
     
     def get_local_memory(self):
-        return self.memory_local.clone()
+        return self.memory_local.clone().to(self.device)
     
     def update_local_memory(self, new_memory):
         self.memory_local = new_memory

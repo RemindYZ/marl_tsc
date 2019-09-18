@@ -74,10 +74,10 @@ class TrafficEnv:
         #     os.makedirs(self.output_path+'./logs')
         self.metric_data = []
         self.step_data = []
-        self.metrics_file = self.output_path + 'metrics.csv'
+        # self.metrics_file = self.output_path + 'metrics.csv'
         # with open(self.metrics_file, 'w') as f:
         #     f.write('episode,time,step,number_total_car,number_departed_car,number_arrived_car,avg_wait_sec,avg_speed_mps,avg_queue\n')
-        self.step_file = self.output_path + 'step.csv'
+        # self.step_file = self.output_path + 'step.csv'
         # with open(self.step_file, 'w') as f:
         #     f.write('episode,time,step,action,reward_jam,reward_waiting,reward,total_reward\n')
 
@@ -91,8 +91,8 @@ class TrafficEnv:
         command += ['--time-to-teleport', '300']
         command += ['--no-warnings', 'True']
         command += ['--duration-log.disable', 'True']
-        command += ['--tripinfo-output',
-                    self.output_path + ('%s_%s_trip.xml' % (self.name, self.agent))]
+        # command += ['--tripinfo-output',
+        #             self.output_path + ('%s_%s_trip.xml' % (self.name, self.agent))]
         traci.start(command, port=self.port)
         self.nodes = self._init_node()
         self.nodes_name = sorted(list(self.nodes.keys()))
@@ -285,9 +285,9 @@ class TrafficEnv:
 
     def output_data(self):
         step_data = pd.DataFrame(self.step_data)
-        step_data.to_csv(self.output_path  +  ('%s_%s_step.csv' % (self.name, self.agent)))
+        step_data.to_csv(self.output_path  +  ('%s_%s_step_%d.csv' % (self.name, self.agent, self.cur_episode)))
         metric_data = pd.DataFrame(self.metric_data)
-        metric_data.to_csv(self.output_path  + ('%s_%s_metric.csv' % (self.name, self.agent)))
+        metric_data.to_csv(self.output_path  + ('%s_%s_metric_%d.csv' % (self.name, self.agent, self.cur_episode)))
 
 if __name__ =='__main__':
     logging.basicConfig(format='%(asctime)s [%(levelname)s] %(message)s',

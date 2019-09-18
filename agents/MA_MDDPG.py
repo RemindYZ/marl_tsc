@@ -5,7 +5,7 @@ from torch import optim
 import random
 import numpy as np
 from utilities.ReplayBuffer import Replay_Buffer
-# from utilities.logger import Logger
+from utilities.logger import Logger
 from agents.MemoryDDPG import MemoryDDPG
 from agents.base import LocalStateEncoderBiLSTM
 
@@ -26,7 +26,8 @@ class MA_MDDPG():
         self.critic_hyperparameters = critic_hyperparameters
         self.actor_hyperparameters = actor_hyperparameters
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        # self.logger = Logger(self.parameters["log_dir"])
+        # self.device = torch.device("cuda:0")
+        self.logger = Logger(self.parameters["log_dir"])
         self.save_path = parameters["model_dir"]
         self.set_random_seeds(parameters["random_seed"])
         self.epsilon_exploration = parameters["epsilon_exploration"]
@@ -36,13 +37,13 @@ class MA_MDDPG():
                                                encoder_hyperparameters["num_layers"],
                                                encoder_hyperparameters["output_size"],
                                                encoder_hyperparameters["phase_size"],
-                                               self.device)
+                                               self.device).to(self.device)
         self.encoder_target = LocalStateEncoderBiLSTM(encoder_hyperparameters["state_size"], 
                                                       encoder_hyperparameters["hidden_size"],
                                                       encoder_hyperparameters["num_layers"],
                                                       encoder_hyperparameters["output_size"],
                                                       encoder_hyperparameters["phase_size"],
-                                                      self.device)
+                                                      self.device).to(self.device)
         self.copy_encoder_parameters(self.encoder, self.encoder_target)
 
         self.actor_names = env.nodes_name
@@ -98,7 +99,8 @@ class MA_MDDPG():
             self.obs = self.next_obs
             self.global_step_number += 1
             if self.dones == True: break
-        self.total_reward_per_epsiode.append(reward)
+        self.total_reward_per_epsiode.append(sum(reward))
+        self.logger.scalar_summary("total_reward", self.total_reward_per_epsiode[-1], self.episode_number + 1)
         self.episode_number += 1
                 
     
@@ -138,12 +140,13 @@ class MA_MDDPG():
         reward_numpy = np.stack([rewards[a_n] for a_n in self.actor_names], axis=0).reshape(-1)
         n_state_numpy = np.stack([n_states[a_n] for a_n in self.actor_names], axis=2).reshape(-1)
         n_phase_numpy = np.stack([n_phases[a_n] for a_n in self.actor_names], axis=1).reshape(-1)
-        memory_numpy = np.stack([memory[a_n] for a_n in self.actor_names], axis=1).reshape(-1)
+        memory_numpy = np.stack([memory[a_n].cpu() for a_n in self.actor_names], axis=1).reshape(-1)
         return state_numpy, phase_numpy, action_numpy, reward_numpy, n_state_numpy, n_phase_numpy, memory_numpy
     
     def critic_learn(self, states, phases, actions, rewards, next_states, next_phases, local_memorys, dones):
         loss = self.compute_loss(states, phases, actions, rewards, next_states, next_phases, local_memorys, dones)
-        self.total_critic_loss.append(loss)
+        self.total_critic_loss.append(sum(loss))
+        self.logger.scalar_summary("critic_loss", self.total_critic_loss[-1], self.global_step_number + 1)
         self._optim_critic(loss)
         tau = self.parameters["critic_tau"]
         for actor in self.actors:
@@ -163,7 +166,8 @@ class MA_MDDPG():
         actions_pred = torch.cat([self.actors[ac_in].actor(state[:,:,:,ac_in], phase[:,:,ac_in], local_memory[:,:,ac_in], neighbor_memory[ac_in])[0]
                             for ac_in, _ in enumerate(self.actor_names)], dim=1).reshape(-1, self.parameters["n_inter"])
         action_loss = [-self.actors[i].critic(state, phase, actions_pred).mean() for i in range(self.parameters["n_inter"])]
-        self.total_actor_loss.append(action_loss)
+        self.total_actor_loss.append(sum(action_loss))
+        self.logger.scalar_summary("actor_loss", self.total_actor_loss[-1], self.global_step_number + 1)
         self._optim_actor(action_loss)
         tau = self.parameters["actor_tau"]
         for actor in self.actors:
@@ -210,9 +214,15 @@ class MA_MDDPG():
             actor.actor_optimizer.step()
     
     def save_model(self):
-        torch.save(self.encoder, self.save_path+"encoder/checkpoint")
+        import os
+        n_path = self.save_path + str(self.episode_number) +'/'
+        if not os.path.exists(n_path):
+            os.mkdir(n_path)
+            os.mkdir(n_path+"encoder/")
+            os.mkdir(n_path+"actor/")
+        torch.save(self.encoder, n_path+"encoder/checkpoint")
         for i, actor in enumerate(self.actors):
-            torch.save(actor, self.save_path + "actor/" + str(i)+"/checkpoint")
+            torch.save(actor, n_path + "actor/"+"/checkpoint"+str(i))
 
 
 

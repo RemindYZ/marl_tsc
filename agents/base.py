@@ -72,7 +72,7 @@ class Actor(nn.Module):
         self.action_size = action_size
         self.n_neighbor = n_neighbor
         inp_size = [encoder.output_size + reader.memory_size * (2 + n_neighbor)] + h_size[:-1]
-        self.fc = [nn.Linear(inp, oup) for inp, oup in zip(inp_size, h_size)]
+        self.fc = [nn.Linear(inp, oup).to(device) for inp, oup in zip(inp_size, h_size)]
         self.out_fc = nn.Linear(h_size[-1], action_size)
     
     def forward(self, state, phase, local_memory, neighbor_memory):
@@ -98,7 +98,7 @@ class Critic(nn.Module):
         self.n_inter = n_inter
         self.device = device
         inp_size = [(encoder.output_size + 1) * n_inter] + h_size[:-1]
-        self.fc = [nn.Linear(inp, oup) for inp, oup in zip(inp_size, h_size)]
+        self.fc = [nn.Linear(inp, oup).to(device) for inp, oup in zip(inp_size, h_size)]
         self.out_fc = nn.Linear(h_size[-1], 1)
     
     def forward(self, state, phase, action):

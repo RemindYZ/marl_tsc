@@ -7,7 +7,7 @@ import numpy as np
 from utilities.ReplayBuffer import Replay_Buffer
 from utilities.logger import Logger
 from agents.MemoryDDPG import MemoryDDPG
-from agents.base import LocalStateEncoderBiLSTM
+from agents.base import LocalStateEncoderBiLSTM, LocalStateEncoderCNN
 
 class MA_MDDPG():
     def __init__(self, env, parameters,
@@ -32,23 +32,31 @@ class MA_MDDPG():
         self.set_random_seeds(parameters["random_seed"])
         self.epsilon_exploration = parameters["epsilon_exploration"]
         self.replaybuffer = Replay_Buffer(parameters["buffer_size"], parameters["batch_size"], parameters["random_seed"])
-        self.encoder =  LocalStateEncoderBiLSTM(encoder_hyperparameters["state_size"], 
-                                               encoder_hyperparameters["hidden_size"],
-                                               encoder_hyperparameters["num_layers"],
-                                               encoder_hyperparameters["output_size"],
-                                               encoder_hyperparameters["phase_size"],
-                                               self.device).to(self.device)
-        self.encoder_target = LocalStateEncoderBiLSTM(encoder_hyperparameters["state_size"], 
-                                                      encoder_hyperparameters["hidden_size"],
-                                                      encoder_hyperparameters["num_layers"],
-                                                      encoder_hyperparameters["output_size"],
-                                                      encoder_hyperparameters["phase_size"],
-                                                      self.device).to(self.device)
+        # self.encoder =  LocalStateEncoderBiLSTM(encoder_hyperparameters["state_size"], 
+        #                                        encoder_hyperparameters["hidden_size"],
+        #                                        encoder_hyperparameters["num_layers"],
+        #                                        encoder_hyperparameters["output_size"],
+        #                                        encoder_hyperparameters["phase_size"],
+        #                                        self.device).to(self.device)
+        # self.encoder_target = LocalStateEncoderBiLSTM(encoder_hyperparameters["state_size"], 
+        #                                               encoder_hyperparameters["hidden_size"],
+        #                                               encoder_hyperparameters["num_layers"],
+        #                                               encoder_hyperparameters["output_size"],
+        #                                               encoder_hyperparameters["phase_size"],
+        #                                               self.device).to(self.device)
+        self.encoder = LocalStateEncoderCNN(encoder_hyperparameters["output_size"],
+                                            encoder_hyperparameters["phase_size"],
+                                            self.device).to(self.device)
+        self.encoder_target = LocalStateEncoderCNN(encoder_hyperparameters["output_size"],
+                                                   encoder_hyperparameters["phase_size"],
+                                                   self.device).to(self.device)
         self.copy_encoder_parameters(self.encoder, self.encoder_target)
+        # state_dict = self.encoder.state_dict()
 
         self.actor_names = env.nodes_name
-        self.actors = [MemoryDDPG(actor, self.encoder, self.encoder_target, parameters, critic_hyperparameters,
-                       actor_hyperparameters, self.device) for actor in self.actor_names]
+        self.actors = [MemoryDDPG(actor, parameters, encoder_hyperparameters, critic_hyperparameters,
+                       actor_hyperparameters, self.device).load_encoder_parameters(self.encoder, self.encoder_target) 
+                       for actor in self.actor_names]
         self.memory = {actor.name:actor.get_local_memory() for actor in self.actors}
         self.global_step_number = 0
         self.episode_number = 1
@@ -143,38 +151,7 @@ class MA_MDDPG():
         memory_numpy = np.stack([memory[a_n].cpu() for a_n in self.actor_names], axis=1).reshape(-1)
         return state_numpy, phase_numpy, action_numpy, reward_numpy, n_state_numpy, n_phase_numpy, memory_numpy
     
-    def critic_learn(self, states, phases, actions, rewards, next_states, next_phases, local_memorys, dones):
-        loss = self.compute_loss(states, phases, actions, rewards, next_states, next_phases, local_memorys, dones)
-        self.total_critic_loss.append(sum(loss))
-        self.logger.scalar_summary("critic_loss", self.total_critic_loss[-1], self.global_step_number + 1)
-        self._optim_critic(loss)
-        tau = self.parameters["critic_tau"]
-        for actor in self.actors:
-            for f_model, t_model in zip(actor.critic.parameters(), actor.critic_target.parameters()):
-                t_model.data.copy_((1-tau)*f_model.data+tau*t_model.data)
-
-    def actor_learn(self, states, phases, local_memorys):
-        if self.dones:
-            #updata learning rate
-            pass
-        state = states.reshape(-1, self.state_height, self.encoder_hyperparameters["state_size"], self.parameters["n_inter"])
-        phase = phases.reshape(-1, self.phase_size, self.parameters["n_inter"])
-        local_memory = local_memorys.reshape(-1, self.parameters["dim_memory"], self.parameters["n_inter"])
-        neighbor_map = [[self.actor_names.index(neigh) for neigh in self.env.neighbor_map[ac_name]] 
-                        for ac_in, ac_name in enumerate(self.actor_names)]
-        neighbor_memory = [[local_memory[:,:,i].squeeze(-1) for i in ind] for ind in neighbor_map]
-        actions_pred = torch.cat([self.actors[ac_in].actor(state[:,:,:,ac_in], phase[:,:,ac_in], local_memory[:,:,ac_in], neighbor_memory[ac_in])[0]
-                            for ac_in, _ in enumerate(self.actor_names)], dim=1).reshape(-1, self.parameters["n_inter"])
-        action_loss = [-self.actors[i].critic(state, phase, actions_pred).mean() for i in range(self.parameters["n_inter"])]
-        self.total_actor_loss.append(sum(action_loss))
-        self.logger.scalar_summary("actor_loss", self.total_actor_loss[-1], self.global_step_number + 1)
-        self._optim_actor(action_loss)
-        tau = self.parameters["actor_tau"]
-        for actor in self.actors:
-            for f_model, t_model in zip(actor.actor.parameters(), actor.actor_target.parameters()):
-                t_model.data.copy_((1-tau)*f_model.data+tau*t_model.data)
-
-    def compute_loss(self, states, phases, actions, rewards, next_states, next_phases, local_memorys, dones):
+    def critic_learn(self, states, phases, actions, rewards, next_states, next_phases, local_memorys, dones, clipping_norm=None):
         state = states.reshape(-1, self.state_height, self.encoder_hyperparameters["state_size"], self.parameters["n_inter"])
         phase = phases.reshape(-1, self.phase_size, self.parameters["n_inter"])
         action = actions.reshape(-1, self.parameters["n_inter"])
@@ -187,31 +164,73 @@ class MA_MDDPG():
         neighbor_memory = [[local_memory[:,:,i].squeeze(-1) for i in ind] for ind in neighbor_map]
         done = dones.reshape(-1,1)
         with torch.no_grad():
-            actions_next = torch.cat([self.actors[ac_in].actor_target(next_state[:,:,:,ac_in], next_phase[:,:,ac_in], local_memory[:,:,ac_in], neighbor_memory[ac_in])[0] 
-                            for ac_in, _ in enumerate(self.actor_names)], dim=1).reshape(-1, self.parameters["n_inter"])
-            critic_targets_next = torch.cat([self.actors[ac_in].critic_target(next_state, next_phase, actions_next) 
-                                   for ac_in, _ in enumerate(self.actor_names)], dim=1).reshape(-1, self.parameters["n_inter"])
-        critic_targets = reward + self.parameters["gamma"] * critic_targets_next * (1.0 - done)
-        crititc_expected = torch.cat([self.actors[ac_in].critic(state, phase, action) 
+            actions_next = torch.cat([self.actors[ac_in].actor_target(next_state[:,:,:,ac_in], next_phase[:,:,ac_in], 
+                                      local_memory[:,:,ac_in], neighbor_memory[ac_in])[0] 
                                       for ac_in, _ in enumerate(self.actor_names)], dim=1).reshape(-1, self.parameters["n_inter"])
-        loss = [functional.mse_loss(crititc_expected[:,i], critic_targets[:,i]) for i in range(critic_targets.shape[-1])]
-        return loss
-    
-    def _optim_critic(self, loss, clipping_norm=None):
-        for actor_ind, actor in enumerate(self.actors):
+            critic_targets_next = torch.cat([self.actors[ac_in].critic_target(next_state, next_phase, actions_next) 
+                                             for ac_in, _ in enumerate(self.actor_names)], dim=1).reshape(-1, self.parameters["n_inter"])
+        critic_targets = reward + self.parameters["gamma"] * critic_targets_next #* (1.0 - done)
+        # crititc_expected = torch.cat([self.actors[ac_in].critic(state, phase, action) 
+        #                               for ac_in, _ in enumerate(self.actor_names)], dim=1).reshape(-1, self.parameters["n_inter"])
+        total_loss = 0
+        for i, actor in enumerate(self.actors):
+            actor.load_encoder_parameters(encoder=self.encoder)
+            crititc_expected = actor.critic(state, phase, action).reshape(-1)
+            loss = functional.mse_loss(crititc_expected, critic_targets[:, i])
+            total_loss += loss.float()
             actor.critic_optimizer.zero_grad()
-            loss[actor_ind].backward(retain_graph=True)
+            loss.backward(retain_graph=False)
             if clipping_norm is not None:
                 torch.nn.utils.clip_grad_norm_(actor.critic.parameters(), clipping_norm)
             actor.critic_optimizer.step()
-    
-    def _optim_actor(self, loss, clipping_norm=None):
-        for actor_ind, actor in enumerate(self.actors):
+            self.encoder.load_state_dict(actor.critic_encoder_parameters())
+        for actor in self.actors:
+            actor.load_encoder_parameters(encoder=self.encoder)
+        self.total_critic_loss.append(total_loss)
+        self.logger.scalar_summary("critic_loss", self.total_critic_loss[-1], self.global_step_number + 1)
+        tau = self.parameters["critic_tau"]
+        self._soft_update_encoder(tau)
+        for actor in self.actors:
+            for f_model, t_model in zip(actor.critic.parameters(), actor.critic_target.parameters()):
+                t_model.data.copy_((1-tau)*f_model.data+tau*t_model.data)
+
+    def actor_learn(self, states, phases, local_memorys, clipping_norm=None):
+        if self.dones:
+            #updata learning rate
+            pass
+        state = states.reshape(-1, self.state_height, self.encoder_hyperparameters["state_size"], self.parameters["n_inter"])
+        phase = phases.reshape(-1, self.phase_size, self.parameters["n_inter"])
+        local_memory = local_memorys.reshape(-1, self.parameters["dim_memory"], self.parameters["n_inter"])
+        neighbor_map = [[self.actor_names.index(neigh) for neigh in self.env.neighbor_map[ac_name]] 
+                        for ac_in, ac_name in enumerate(self.actor_names)]
+        neighbor_memory = [[local_memory[:,:,i].squeeze(-1) for i in ind] for ind in neighbor_map]
+        actions_pred = torch.cat([self.actors[ac_in].actor(state[:,:,:,ac_in], phase[:,:,ac_in], local_memory[:,:,ac_in], neighbor_memory[ac_in])[0]
+                            for ac_in, _ in enumerate(self.actor_names)], dim=1).reshape(-1, self.parameters["n_inter"])
+        total_loss = 0
+        for _, actor in enumerate(self.actors):
+            # actions_pred = actor.actor(state[:,:,:,i], phase[:,:,i], local_memory[:,:,i], neighbor_memory[i])[0].reshape(-1)
+            action_loss = -actor.critic(state, phase, actions_pred).mean()
+            total_loss += action_loss
+            actor.load_encoder_parameters(encoder=self.encoder)
             actor.actor_optimizer.zero_grad()
-            loss[actor_ind].backward(retain_graph=True)
+            action_loss.backward(retain_graph=False)
             if clipping_norm is not None:
                 torch.nn.utils.clip_grad_norm_(actor.actor.parameters(), clipping_norm)
             actor.actor_optimizer.step()
+            self.encoder.load_state_dict(actor.actor_encoder_parameters())
+        for actor in self.actors:
+            actor.load_encoder_parameters(encoder=self.encoder)
+        self.total_actor_loss.append(total_loss)
+        self.logger.scalar_summary("actor_loss", self.total_actor_loss[-1], self.global_step_number + 1)
+        tau = self.parameters["actor_tau"]
+        self._soft_update_encoder(tau)
+        for actor in self.actors:
+            for f_model, t_model in zip(actor.actor.parameters(), actor.actor_target.parameters()):
+                t_model.data.copy_((1-tau)*f_model.data+tau*t_model.data)
+    
+    def _soft_update_encoder(self, tau):
+        for to_model, from_model in zip(self.encoder_target.parameters(), self.encoder.parameters()):
+            to_model.data.copy_((1-tau)*from_model.data+tau*to_model.data)
     
     def save_model(self):
         import os

@@ -4,14 +4,14 @@ import random
 import numpy as np
 from agents.MA_MDDPG import MA_MDDPG
 from env.env import TrafficEnv
-
+    
 parameters = {
     "random_seed": 42,
     "log_dir": "./experiments/logs/",
     "model_dir": "./experiments/model/",
     "epsilon_exploration": 0.3,
     "buffer_size": 10000,
-    "batch_size": 256,
+    "batch_size": 32,
     "n_inter": 9,
     "learning_step_per_session": 1,
     "critic_tau": 0.995, 
@@ -36,7 +36,6 @@ critic_hyperparameters = {
     "learning_rate": 0.01
 }
 actor_hyperparameters = {
-    "state_size": 10,
     "reader_h_size": 16,
     "h_size": [256, 64, 16],
     "action_size": 1,

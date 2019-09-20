@@ -8,6 +8,7 @@ from utilities.ReplayBuffer import Replay_Buffer
 from utilities.logger import Logger
 from agents.MemoryDDPG import MemoryDDPG
 from agents.base import LocalStateEncoderBiLSTM, LocalStateEncoderCNN
+import os
 
 class MA_MDDPG():
     def __init__(self, env, parameters,
@@ -15,6 +16,7 @@ class MA_MDDPG():
                  critic_hyperparameters, 
                  actor_hyperparameters):
         self.env = env
+        self.name = parameters["name"]
         self.neighbor_map = env.neighbor_map
 
         self.state_height = int(self.env.ild_length/self.env.ver_length)
@@ -27,7 +29,10 @@ class MA_MDDPG():
         self.actor_hyperparameters = actor_hyperparameters
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         # self.device = torch.device("cuda:0")
-        self.logger = Logger(self.parameters["log_dir"])
+        n_path = parameters["log_dir"] + self.name +'/'
+        if not os.path.exists(n_path):
+            os.mkdir(n_path)
+        self.logger = Logger(n_path)
         self.save_path = parameters["model_dir"]
         self.set_random_seeds(parameters["random_seed"])
         self.epsilon_exploration = parameters["epsilon_exploration"]
@@ -59,7 +64,7 @@ class MA_MDDPG():
                        for actor in self.actor_names]
         self.memory = {actor.name:actor.get_local_memory() for actor in self.actors}
         self.global_step_number = 0
-        self.episode_number = 1
+        self.episode_number = 0
 
         self.total_reward_per_epsiode = []
         self.total_critic_loss = []
@@ -101,7 +106,7 @@ class MA_MDDPG():
                 for _ in range(self.parameters["learning_step_per_session"]):
                     states, phases, actions, rewards, next_states, next_phases, local_memorys, dones = self.replaybuffer.sample()
                     self.critic_learn(states, phases, actions, rewards, next_states, next_phases, local_memorys, dones)
-                    self.actor_learn(states, phases, local_memorys)
+                    self.actor_learn(states, phases, actions, local_memorys)
             states, phases, actions, rewards, n_states, n_phases, memory = self._dict_to_numpy(self.obs, self.actions, self.rewards, self.next_obs, self.memory)
             self.replaybuffer.add_experience(states, phases, actions, rewards, n_states, n_phases, memory, self.dones)
             self.obs = self.next_obs
@@ -125,13 +130,15 @@ class MA_MDDPG():
             self.actors[actor_ind].actor.eval()
             with torch.no_grad():
                 action_output, new_memory = self.actors[actor_ind].actor(po, ph, l_memory, n_memory)
-                action_distribution = Categorical(action_output)
-                action = action_distribution.sample().cpu().numpy()
+                # action_distribution = Categorical(action_output)
+                # action = action_distribution.sample().cpu().numpy()
+                if random.random() <= action_output[0,0].cpu().numpy():
+                    action = 1
+                else:
+                    action = 0
             self.actors[actor_ind].actor.train()
             if random.random() <= self.epsilon_exploration:
                 action = random.randint(0, 1)
-            else:
-                action = action[0]
             actions[actor_name] = action 
             all_new_memory.append(new_memory)
         for actor_ind, actor in enumerate(self.actors):
@@ -194,24 +201,27 @@ class MA_MDDPG():
             for f_model, t_model in zip(actor.critic.parameters(), actor.critic_target.parameters()):
                 t_model.data.copy_((1-tau)*f_model.data+tau*t_model.data)
 
-    def actor_learn(self, states, phases, local_memorys, clipping_norm=None):
+    def actor_learn(self, states, phases, actions, local_memorys, clipping_norm=None):
         if self.dones:
             #updata learning rate
             pass
         state = states.reshape(-1, self.state_height, self.encoder_hyperparameters["state_size"], self.parameters["n_inter"])
         phase = phases.reshape(-1, self.phase_size, self.parameters["n_inter"])
+        action = actions.reshape(-1, self.parameters["n_inter"])
         local_memory = local_memorys.reshape(-1, self.parameters["dim_memory"], self.parameters["n_inter"])
         neighbor_map = [[self.actor_names.index(neigh) for neigh in self.env.neighbor_map[ac_name]] 
                         for ac_in, ac_name in enumerate(self.actor_names)]
         neighbor_memory = [[local_memory[:,:,i].squeeze(-1) for i in ind] for ind in neighbor_map]
-        actions_pred = torch.cat([self.actors[ac_in].actor(state[:,:,:,ac_in], phase[:,:,ac_in], local_memory[:,:,ac_in], neighbor_memory[ac_in])[0]
-                            for ac_in, _ in enumerate(self.actor_names)], dim=1).reshape(-1, self.parameters["n_inter"])
+        # actions_pred = torch.cat([self.actors[ac_in].actor(state[:,:,:,ac_in], phase[:,:,ac_in], local_memory[:,:,ac_in], neighbor_memory[ac_in])[0]
+        #                     for ac_in, _ in enumerate(self.actor_names)], dim=1).reshape(-1, self.parameters["n_inter"])
         total_loss = 0
-        for _, actor in enumerate(self.actors):
-            # actions_pred = actor.actor(state[:,:,:,i], phase[:,:,i], local_memory[:,:,i], neighbor_memory[i])[0].reshape(-1)
-            action_loss = -actor.critic(state, phase, actions_pred).mean()
-            total_loss += action_loss
+        for i, actor in enumerate(self.actors):
+            temp = action.clone()
             actor.load_encoder_parameters(encoder=self.encoder)
+            actions_pred = actor.actor(state[:,:,:,i], phase[:,:,i], local_memory[:,:,i], neighbor_memory[i])[0].reshape(-1)
+            temp[:, i] = actions_pred
+            action_loss = -actor.critic(state, phase, temp).mean()
+            total_loss += action_loss
             actor.actor_optimizer.zero_grad()
             action_loss.backward(retain_graph=False)
             if clipping_norm is not None:
@@ -233,8 +243,7 @@ class MA_MDDPG():
             to_model.data.copy_((1-tau)*from_model.data+tau*to_model.data)
     
     def save_model(self):
-        import os
-        n_path = self.save_path + str(self.episode_number) +'/'
+        n_path = self.save_path + self.name + str(self.episode_number) +'/'
         if not os.path.exists(n_path):
             os.mkdir(n_path)
             os.mkdir(n_path+"encoder/")
